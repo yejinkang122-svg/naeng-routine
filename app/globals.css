@@ -45,7 +45,7 @@ body {
   color: var(--ink);
   background:
     linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12)),
-    url("/background_summer_static.png") center / cover fixed no-repeat,
+    url("/background_summer.gif") center / cover no-repeat,
     #19b7e9;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Pretendard, sans-serif;
 }

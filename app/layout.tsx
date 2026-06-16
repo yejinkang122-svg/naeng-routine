@@ -5,6 +5,15 @@ import "./dashboard.css";
 export const metadata: Metadata = {
   title: "냉이랑 루틴",
   description: "개인 맞춤 다이어트 루틴 트래커",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icon.png", sizes: "512x512", type: "image/png" }
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
+    ]
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
