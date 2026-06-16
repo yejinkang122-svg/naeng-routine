@@ -1,0 +1,133 @@
+:root {
+  --ink: #1d1d1f;
+  --ink-muted: #7a7a7a;
+  --ink-faint: #cccccc;
+  --canvas: #ffffff;
+  --parchment: #f5f5f7;
+  --surface-pearl: #fafafc;
+  --divider: #f0f0f0;
+  --hairline: #e0e0e0;
+  --chip: #d2d2d7;
+  --action: #ff5500;
+  --action-focus: #ff7722;
+  --danger: #c0392b;
+  --cat-meal: #f6753e;
+  --cat-exercise: #f39cc9;
+  --cat-supplement: #44b8fb;
+  --cat-life: #9bbb97;
+  --radius-card: 32px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 8px;
+  --radius-pill: 9999px;
+  --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.1);
+  --motion-standard: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-progress: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 16px 16px 120px;
+  color: var(--ink);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12)),
+    url("/background_summer_static.png") center / cover fixed no-repeat,
+    #19b7e9;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Pretendard, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.glass-card {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.corner-continuous {
+  overflow: hidden;
+  border-radius: var(--radius-card);
+}
+
+.pill {
+  border-radius: var(--radius-pill);
+}
+
+.primary-button {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--action);
+  color: #fff;
+  padding: 14px 18px;
+  font-size: 17px;
+  font-weight: 400;
+  transition: var(--motion-standard);
+}
+
+.primary-button:active {
+  transform: scale(0.95);
+}
+
+.secondary-button {
+  width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--parchment);
+  color: var(--ink);
+  padding: 12px 16px;
+  font-size: 15px;
+  transition: var(--motion-standard);
+}
+
+.secondary-button.danger-button {
+  border-color: rgba(192, 57, 43, 0.18);
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--danger);
+}
+
+.muted {
+  color: var(--ink-muted);
+}
+
+.micro {
+  font-size: 11px;
+  letter-spacing: -0.12px;
+}
+
+.page-card {
+  padding: 16px;
+}
