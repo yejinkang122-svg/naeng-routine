@@ -205,7 +205,7 @@ export function SettingsPanel() {
       setCatalogItems(nextItems);
       setCatalogCategory(catalogForm.category);
       resetCatalogForm(catalogForm.category);
-      setMessage("템플릿을 저장했어요.");
+      setMessage("템플릿에 저장했어요.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "템플릿을 저장하지 못했어요.");
     } finally {
@@ -215,7 +215,7 @@ export function SettingsPanel() {
 
   async function handleDeleteCatalog(item: CatalogItem) {
     if (!userId) return;
-    const confirmed = window.confirm(`"${item.title}" 템플릿을 삭제할까요?`);
+    const confirmed = window.confirm(`템플릿을 삭제할까요?`);
     if (!confirmed) return;
 
     setCatalogSaving(true);
@@ -361,7 +361,7 @@ export function SettingsPanel() {
             </label>
           ) : null}
           <button className="primary-button" disabled={catalogSaving || !catalogForm.title.trim()} type="submit">
-            {catalogSaving ? "저장 중" : editingCatalogId ? "수정 저장" : "템플릿 추가"}
+            {catalogSaving ? "저장 중" : editingCatalogId ? "수정 완료" : "템플릿 저장"}
           </button>
         </form>
 
@@ -389,7 +389,7 @@ export function SettingsPanel() {
               </div>
             ))}
           {catalogItems.filter((item) => item.category === catalogCategory).length === 0 ? (
-            <p className="body-copy">아직 등록된 템플릿이 없어요.</p>
+            <p className="body-copy">등록한 템플릿이 없어요.</p>
           ) : null}
         </div>
       </section>

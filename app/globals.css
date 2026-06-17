@@ -1,28 +1,98 @@
 :root {
+  /* ===== Action ===== */
+  --action: #ff5500;
+  --action-focus: #ff7722;
+
+  /* ===== Ink ===== */
   --ink: #1d1d1f;
   --ink-muted: #7a7a7a;
   --ink-faint: #cccccc;
+  --ink-disabled: #a3a3a6;
+
+  /* ===== Surface ===== */
   --canvas: #ffffff;
   --parchment: #f5f5f7;
   --surface-pearl: #fafafc;
   --divider: #f0f0f0;
   --hairline: #e0e0e0;
-  --chip: #d2d2d7;
-  --action: #ff5500;
-  --action-focus: #ff7722;
-  --danger: #c0392b;
+
+  /* ===== Category ===== */
   --cat-meal: #f6753e;
   --cat-exercise: #f39cc9;
   --cat-supplement: #44b8fb;
   --cat-life: #9bbb97;
+
+  /* ===== Semantic ===== */
+  --danger: #c0392b;
+  --danger-bg: #fdeeee;
+  --success: #2f9e58;
+  --success-bg: #e9f7ee;
+  --warning: #c98a1c;
+  --warning-bg: #fdf3e2;
+
+  /* ===== Radius ===== */
   --radius-card: 32px;
   --radius-lg: 18px;
   --radius-md: 14px;
   --radius-sm: 8px;
   --radius-pill: 9999px;
+
+  /* ===== Shadow ===== */
   --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-focus: 0 0 0 4px rgba(255, 85, 0, 0.18);
+
+  /* ===== Motion ===== */
   --motion-standard: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   --motion-progress: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-press: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ===== Spacing — 4pt grid ===== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* ===== Typography scale ===== */
+  --text-large-title: 28px;
+  --text-title1: 22px;
+  --text-title2: 17px;
+  --text-title3: 15px;
+  --text-body: 14px;
+  --text-subhead: 13px;
+  --text-footnote: 12px;
+  --text-caption: 11px;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.45;
+
+  --tap-min: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f2f2f4;
+    --ink-muted: #9a9aa0;
+    --ink-faint: #48484c;
+    --ink-disabled: #5c5c60;
+
+    --canvas: #1c1c1e;
+    --parchment: #000000;
+    --surface-pearl: #242426;
+    --divider: #2c2c2e;
+    --hairline: #38383a;
+
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.45);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+
+    --danger-bg: #3a2220;
+    --success-bg: #1f3326;
+    --warning-bg: #3a2e16;
+  }
 }
 
 * {
@@ -47,7 +117,9 @@ body {
     linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12)),
     url("/background_summer.gif") center / cover no-repeat,
     #19b7e9;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Pretendard, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: var(--leading-normal);
 }
 
 button,
@@ -59,6 +131,12 @@ select {
 
 button {
   cursor: pointer;
+}
+
+/* ===== Typography helpers ===== */
+.font-display {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  letter-spacing: -0.01em;
 }
 
 .app-shell {
@@ -93,13 +171,27 @@ button {
   background: var(--action);
   color: #fff;
   padding: 14px 18px;
-  font-size: 17px;
-  font-weight: 400;
+  font-size: var(--text-body);
+  font-weight: 700;
   transition: var(--motion-standard);
 }
 
 .primary-button:active {
-  transform: scale(0.95);
+  background: var(--action-focus);
+  transform: scale(0.98);
+  transition: var(--motion-press);
+}
+
+.primary-button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.primary-button:disabled {
+  background: var(--ink-faint);
+  color: var(--canvas);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .secondary-button {
@@ -109,7 +201,8 @@ button {
   background: var(--parchment);
   color: var(--ink);
   padding: 12px 16px;
-  font-size: 15px;
+  font-size: var(--text-subhead);
+  font-weight: 600;
   transition: var(--motion-standard);
 }
 
@@ -124,7 +217,7 @@ button {
 }
 
 .micro {
-  font-size: 11px;
+  font-size: var(--text-caption);
   letter-spacing: -0.12px;
 }
 

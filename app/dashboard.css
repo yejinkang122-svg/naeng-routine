@@ -74,10 +74,11 @@
 
 .dashboard-header h1 {
   margin-top: 2px;
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.28px;
-  line-height: 1.14;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  font-size: var(--text-title2);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
 }
 
 .date-line {
@@ -299,9 +300,10 @@
 
 .section-title,
 .settings-title {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.374px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  font-size: var(--text-title3);
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .routine-list {
@@ -341,9 +343,10 @@
   height: 22px;
   flex: 0 0 auto;
   margin-top: 2px;
-  border: 1.5px solid var(--chip);
+  border: 2px solid var(--ink-faint);
   border-radius: 50%;
   background: var(--canvas);
+  transition: var(--motion-standard);
 }
 
 .check-dot:disabled {
@@ -416,23 +419,23 @@
 }
 
 .category-badge.meal {
-  background: #fef0e8;
-  color: #c44b12;
+  background: #fdeae0;
+  color: var(--cat-meal);
 }
 
 .category-badge.exercise {
-  background: #fde8f3;
-  color: #b0457a;
+  background: #fde7f1;
+  color: var(--cat-exercise);
 }
 
 .category-badge.supplement {
-  background: #e6f5fe;
-  color: #1878b8;
+  background: #e3f6fe;
+  color: var(--cat-supplement);
 }
 
 .category-badge.life {
-  background: #eef5ed;
-  color: #3d6e3a;
+  background: #eef3ed;
+  color: var(--cat-life);
 }
 
 .time-label,
@@ -449,10 +452,10 @@
 }
 
 .routine-body h3 {
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: -0.224px;
-  line-height: 1.43;
+  font-size: var(--text-body);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: var(--leading-normal);
 }
 
 .routine-row.checked h3 {
@@ -645,9 +648,10 @@
   background: transparent;
   color: var(--ink);
   padding: 0;
-  font-size: 18px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  font-size: var(--text-title2);
   font-weight: 700;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.01em;
 }
 
 .calendar-month-trigger i {
@@ -923,6 +927,8 @@
 .settings-form select:focus {
   border-color: var(--action);
   background: #fff;
+  box-shadow: var(--shadow-focus);
+  outline: none;
 }
 
 .settings-category-segment {
@@ -985,10 +991,11 @@
 
 .auth-title {
   margin-top: 4px;
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.28px;
-  line-height: 1.14;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  font-size: var(--text-title2);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
 }
 
 .auth-toggle {
@@ -1046,6 +1053,8 @@
 .auth-form input:focus {
   border-color: var(--action);
   background: #fff;
+  box-shadow: var(--shadow-focus);
+  outline: none;
 }
 
 .auth-message {
@@ -1163,9 +1172,10 @@
 
 .sheet-title {
   margin-top: 4px;
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.374px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  font-size: var(--text-title3);
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .sheet-fixed-area {
@@ -1251,6 +1261,8 @@
 .memo-textarea:focus {
   border-color: var(--action);
   background: #fff;
+  box-shadow: var(--shadow-focus);
+  outline: none;
 }
 
 .quick-meal-form {
@@ -1280,6 +1292,8 @@
 .quick-meal-form input:focus {
   border-color: var(--action);
   background: #fff;
+  box-shadow: var(--shadow-focus);
+  outline: none;
 }
 
 .quick-meal-form .inline-check-row {
@@ -1314,6 +1328,8 @@
 .weight-input:focus {
   border-color: var(--action);
   background: #fff;
+  box-shadow: var(--shadow-focus);
+  outline: none;
 }
 
 .bottom-sheet .secondary-button {
@@ -1527,8 +1543,8 @@
 }
 
 .report-hero div:first-child {
-  border-color: rgba(255, 85, 0, 0.28);
-  background: rgba(255, 85, 0, 0.08);
+  border-color: rgba(255, 85, 0, 0.22);
+  background: #fff8f4;
 }
 
 .report-hero span,
@@ -1539,10 +1555,12 @@
 }
 
 .report-hero strong {
-  color: var(--ink);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  color: var(--action);
+  font-size: var(--text-title1);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
 }
 
 .report-ai-copy,
@@ -1571,9 +1589,10 @@
 }
 
 .report-section-head h3 {
-  font-size: 15px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  font-size: var(--text-title3);
   font-weight: 700;
-  letter-spacing: -0.16px;
+  letter-spacing: -0.01em;
 }
 
 .report-section-head span {

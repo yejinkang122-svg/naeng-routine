@@ -412,7 +412,7 @@ export function RoutineShell() {
         ? "운동은 60분 목표보다 20분 시작으로 낮추고, 식단 직후에 붙이면 성공 확률이 올라가요."
         : mealStats && mealStats.percent < 60
           ? "식단 루틴은 직접 입력보다 자주 먹는 조합을 먼저 선택하는 방식이 더 안정적이에요."
-          : "현재 잘 유지되는 루틴을 그대로 두고, 실패율이 높은 시간대만 하나씩 줄여보세요.";
+          : "현재 잘 유지되는 루틴을 그대로 두고, 자주 빠뜨린 시간대만 하나씩 줄여보세요.";
 
     return {
       averageCalories,
@@ -876,7 +876,9 @@ export function RoutineShell() {
 
   async function handleDelete(item: DailyItemRow) {
     if (!routine || isReadOnlyDate) return;
-    const confirmed = window.confirm(`"${item.title}" 항목을 오늘 루틴에서 삭제할까요?`);
+    const confirmed = window.confirm(`항목을 삭제할까요?
+
+삭제하면 오늘 루틴에서 바로 사라져요.`);
     if (!confirmed) return;
 
     setBusyItemId(item.id);
@@ -1096,7 +1098,7 @@ export function RoutineShell() {
             onClick={openMealSheet}
             type="button"
           >
-            먹은 것 기록 +
+            + 먹은 것 기록
           </button>
         </div>
       </section>
@@ -1116,7 +1118,7 @@ export function RoutineShell() {
         </div>
 
         {error ? <p className="inline-error">{error}</p> : null}
-        {loading ? <p className="body-copy">오늘의 루틴을 클라우드에서 불러오는 중이에요.</p> : null}
+        {loading ? <p className="body-copy">루틴을 불러오는 중이에요.</p> : null}
 
         <div className="routine-list">
           {timeSections.map((section) => {
@@ -1215,7 +1217,7 @@ export function RoutineShell() {
           onClick={() => openAddSheet("meal")}
           type="button"
         >
-          항목 추가 +
+          + 항목 추가
         </button>
       </section>
 
@@ -1249,12 +1251,12 @@ export function RoutineShell() {
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={categorySheetItem ? "항목 변경" : "항목 추가"}
+            aria-label={categorySheetItem ? "항목 수정" : "항목 추가"}
           >
             <div className="sheet-fixed-area">
               <div className="sheet-handle" />
               <p className="micro muted">오늘의 루틴</p>
-              <h2 className="sheet-title">{categorySheetItem ? "항목 변경" : "항목 추가"}</h2>
+              <h2 className="sheet-title">{categorySheetItem ? "항목 수정" : "항목 추가"}</h2>
               <div className="sheet-segment add-sheet-segment" aria-label="카테고리 선택">
                 {[
                   { id: "meal", label: "식단" },
@@ -1366,7 +1368,7 @@ export function RoutineShell() {
             </div>
             <div className="sheet-command-row">
               <button className="secondary-button" onClick={closeAddSheet} type="button">
-                닫기
+                취소
               </button>
               <button
                 className="primary-button"
@@ -1380,7 +1382,7 @@ export function RoutineShell() {
                 onClick={handleConfirmAdd}
                 type="button"
               >
-                {categorySheetItem ? "저장" : "추가"}
+                {categorySheetItem ? "수정 완료" : "추가"}
               </button>
             </div>
           </section>
@@ -1492,7 +1494,7 @@ export function RoutineShell() {
             </div>
             <div className="sheet-command-row">
               <button className="secondary-button" onClick={() => setMealSheetOpen(false)} type="button">
-                닫기
+                취소
               </button>
               <button className="primary-button" disabled={!mealTitle.trim()} type="submit">
                 기록
@@ -1513,15 +1515,15 @@ export function RoutineShell() {
           >
             <div className="sheet-fixed-area">
               <div className="sheet-handle" />
-              <p className="micro muted">행동 분석 리포트</p>
-              <h2 className="sheet-title">오늘의 인사이트</h2>
+              <p className="micro muted">최근 7일 기록</p>
+              <h2 className="sheet-title">리포트</h2>
             </div>
             <div className="sheet-content report-content">
               {reportLoading ? <p className="body-copy">최근 7일 데이터를 분석하고 있어요.</p> : null}
 
               <section className="report-hero">
                 <div>
-                  <span>루틴 달성률</span>
+                  <span>이번 주 루틴 완료율</span>
                   <strong>{percent}%</strong>
                 </div>
                 <div>
@@ -1678,7 +1680,7 @@ export function RoutineShell() {
 
               <section className="report-section">
                 <div className="report-section-head">
-                  <h3>좋은 루틴</h3>
+                  <h3>잘 지킨 루틴</h3>
                   <span>최근 7일</span>
                 </div>
                 <div className="routine-rank-list">
@@ -1690,15 +1692,15 @@ export function RoutineShell() {
                       </div>
                     ))
                   ) : (
-                    <p className="body-copy">아직 비교할 루틴 데이터가 부족해요.</p>
+                    <p className="body-copy">아직 비교할 기록이 부족해요.</p>
                   )}
                 </div>
               </section>
 
               <section className="report-section">
                 <div className="report-section-head">
-                  <h3>주의 루틴</h3>
-                  <span>반복 미완료 후보</span>
+                  <h3>자주 빠뜨린 루틴</h3>
+                  <span>최근 7일</span>
                 </div>
                 <div className="routine-rank-list risk">
                   {reportData.riskRoutines.length > 0 ? (
@@ -1709,13 +1711,13 @@ export function RoutineShell() {
                       </div>
                     ))
                   ) : (
-                    <p className="body-copy">아직 위험 루틴이 뚜렷하지 않아요.</p>
+                    <p className="body-copy">자주 빠뜨린 루틴이 없어요.</p>
                   )}
                 </div>
               </section>
 
               <section className="report-coach-card">
-                <span>내일 추천 액션</span>
+                <span>다음에 시도해볼 것</span>
                 <p>{reportData.coaching}</p>
               </section>
             </div>

@@ -69,7 +69,7 @@ export function LoginPanel({ initialError }: LoginPanelProps) {
               autoComplete="email"
               inputMode="email"
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
+              placeholder="name@example.com"
               required
               type="email"
               value={email}
@@ -81,7 +81,7 @@ export function LoginPanel({ initialError }: LoginPanelProps) {
               autoComplete={mode === "signin" ? "current-password" : "new-password"}
               minLength={6}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="6자 이상"
+              placeholder="8자 이상"
               required
               type="password"
               value={password}
@@ -91,7 +91,7 @@ export function LoginPanel({ initialError }: LoginPanelProps) {
           {message ? <p className="auth-message">{message}</p> : null}
 
           <button className="primary-button" disabled={busy} type="submit">
-            {busy ? "처리 중..." : mode === "signin" ? "로그인" : "가입하고 시작"}
+            {busy ? "처리 중..." : mode === "signin" ? "로그인" : "가입"}
           </button>
         </form>
       </section>
