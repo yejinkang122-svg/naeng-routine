@@ -42,12 +42,39 @@ export type DailyItemRow = {
   actual_title: string | null;
 };
 
+export type CatalogItem = {
+  id: string;
+  user_id: string;
+  category: RoutineCategory;
+  title: string;
+  subtitle: string | null;
+  default_time_bucket: DailyItemRow["time_bucket"];
+  default_time_minutes: number | null;
+  calories: number | null;
+  protein_g: number | null;
+  is_active: boolean;
+  sort_order: number;
+};
+
 export type WeightLog = {
   id: string;
   measured_date: string;
   weight: number;
   measurement_context: "morning_empty" | "after_pt" | "evening" | "custom";
   memo: string | null;
+};
+
+export type UserSettings = {
+  id: string;
+  user_id: string;
+  start_weight: number | null;
+  target_weight: number | null;
+  goal_type: "lose" | "gain" | "maintain";
+  daily_calorie_goal: number;
+  daily_protein_goal: number | null;
+  success_threshold_pct: number;
+  editable_past_days: number;
+  selected_theme_key: string;
 };
 
 export type CalendarDayState =

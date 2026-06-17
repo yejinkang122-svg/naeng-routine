@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CalendarDayState, DailyRoutine } from "@/lib/types";
 import { toDateKey } from "@/lib/date";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
@@ -27,11 +27,11 @@ function getMonthGrid(viewDate: Date) {
   });
 }
 
-function stateFromRoutine(routine?: DailyRoutine): CalendarDayState {
+function stateFromRoutine(routine: DailyRoutine | undefined, successThreshold: number): CalendarDayState {
   if (!routine) return "no_record";
   if (routine.checked_count === 0 && routine.failed_count === 0 && routine.skipped_count === 0) return "planned";
   if (routine.completion_pct >= 100) return "perfect";
-  if (routine.completion_pct >= 80) return "success";
+  if (routine.completion_pct >= successThreshold) return "success";
   if (routine.failed_count > 0 && routine.completion_pct < 50) return "failed";
   if (routine.total_count > 0) return "in_progress";
   return "planned";
@@ -40,14 +40,16 @@ function stateFromRoutine(routine?: DailyRoutine): CalendarDayState {
 type StatusCalendarProps = {
   onSelectDate: (dateKey: string) => void;
   selectedDateKey: string;
+  successThreshold: number;
 };
 
-export function StatusCalendar({ onSelectDate, selectedDateKey }: StatusCalendarProps) {
+export function StatusCalendar({ onSelectDate, selectedDateKey, successThreshold }: StatusCalendarProps) {
   const [viewDate, setViewDate] = useState(() => new Date());
   const [expanded, setExpanded] = useState(false);
   const [monthMenuOpen, setMonthMenuOpen] = useState(false);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
   const [routines, setRoutines] = useState<Record<string, DailyRoutine>>({});
+  const monthSelectorRef = useRef<HTMLDivElement | null>(null);
   const todayKey = toDateKey(new Date());
 
   const monthDays = useMemo(() => getMonthGrid(viewDate), [viewDate]);
@@ -64,6 +66,32 @@ export function StatusCalendar({ onSelectDate, selectedDateKey }: StatusCalendar
         weekEnd.setHours(23, 59, 59, 999);
         return date >= weekStart && date <= weekEnd;
       });
+
+  useEffect(() => {
+    const [year, month] = selectedDateKey.split("-").map(Number);
+    const selectedMonthKey = `${year}-${String(month).padStart(2, "0")}`;
+    const viewMonthKey = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, "0")}`;
+
+    if (selectedMonthKey !== viewMonthKey) {
+      setViewDate(new Date(year, month - 1, 1));
+    }
+  }, [selectedDateKey, viewDate]);
+
+  useEffect(() => {
+    if (!monthMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!monthSelectorRef.current?.contains(event.target as Node)) {
+        setMonthMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [monthMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,7 +151,7 @@ export function StatusCalendar({ onSelectDate, selectedDateKey }: StatusCalendar
   return (
     <section className="glass-card page-card">
       <div className="section-head calendar-head">
-        <div className="calendar-month-selector">
+        <div className="calendar-month-selector" ref={monthSelectorRef}>
           <button
             aria-expanded={monthMenuOpen}
             className="calendar-month-trigger"
@@ -159,18 +187,20 @@ export function StatusCalendar({ onSelectDate, selectedDateKey }: StatusCalendar
       <div className={`calendar-row ${expanded ? "expanded" : ""}`}>
         {visibleDays.map((date) => {
           const dateKey = toDateKey(date);
-          const state = stateFromRoutine(routines[dateKey]);
+          const routine = routines[dateKey];
+          const state = stateFromRoutine(routine, successThreshold);
           const outsideMonth = date.getMonth() !== viewDate.getMonth();
           const isToday = dateKey === todayKey;
           const isFuture = dateKey > todayKey;
-          const icon = isFuture ? undefined : iconByState[state];
+          const isSelectable = Boolean(routine) && !isFuture;
+          const icon = isSelectable ? iconByState[state] : undefined;
 
           return (
             <button
               className={`calendar-day ${state} ${outsideMonth ? "muted-day" : ""} ${
                 isToday ? "today" : ""
               } ${dateKey === selectedDateKey ? "selected" : ""}`}
-              disabled={isFuture}
+              disabled={!isSelectable}
               key={dateKey}
               onClick={() => onSelectDate(dateKey)}
               type="button"

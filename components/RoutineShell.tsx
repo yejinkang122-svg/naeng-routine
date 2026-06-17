@@ -1,25 +1,27 @@
 "use client";
 
 import type { CSSProperties, FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
-import type { DailyItemRow, DailyRoutine, RoutineCategory, RoutineItem } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CatalogItem, DailyItemRow, DailyRoutine, RoutineCategory, RoutineItem, UserSettings } from "@/lib/types";
 import { formatKoreanDate } from "@/lib/date";
 import {
   addDailyItem,
   dayTypeOptions,
   getOrCreateRoutineForDate,
   mapDailyItemToRoutineItem,
-  quickAddItems,
   replaceRoutineDayType,
   softDeleteDailyItem,
   updateDailyItemContent,
   updateDailyItemMemo,
   updateDailyItemStatus
 } from "@/lib/routines";
+import { ensureDefaultCatalogItems, mapCatalogToDailyItem, upsertCatalogItem } from "@/lib/catalog";
+import { defaultUserSettings, getOrCreateUserSettings } from "@/lib/settings";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { applyThemeToDocument, getAccessibleHeaderTextColor } from "@/lib/theme";
 import type { WeightLog } from "@/lib/types";
 import { toDateKey } from "@/lib/date";
-import { getWeightLog, upsertWeightLog } from "@/lib/weight";
+import { getPreviousWeightLog, getWeightLog, upsertWeightLog } from "@/lib/weight";
 import { StatusCalendar } from "./StatusCalendar";
 import { WeightSheet } from "./WeightSheet";
 
@@ -44,7 +46,6 @@ const timeSections: Array<{ id: DailyItemRow["time_bucket"]; label: string }> = 
   { id: "evening", label: "저녁" }
 ];
 
-const calorieGoal = 1494;
 type AddCategory = RoutineCategory | "custom";
 type ReportSnapshot = {
   routines: DailyRoutine[];
@@ -119,6 +120,10 @@ function getPercent(checked: number, total: number) {
   return total > 0 ? Math.round((checked / total) * 100) : 0;
 }
 
+function getMealCalories(item: Pick<DailyItemRow, "actual_calories" | "planned_calories">) {
+  return item.actual_calories ?? item.planned_calories ?? null;
+}
+
 function formatWeightDelta(delta: number | null) {
   if (delta === null) return "비교 데이터 없음";
   if (delta === 0) return "변화 없음";
@@ -131,24 +136,35 @@ export function RoutineShell() {
   const [dailyItems, setDailyItems] = useState<DailyItemRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [weightLog, setWeightLog] = useState<WeightLog | null>(null);
+  const [fallbackWeightLog, setFallbackWeightLog] = useState<WeightLog | null>(null);
+  const [navigableDateKeys, setNavigableDateKeys] = useState<Set<string>>(new Set());
+  const [settings, setSettings] = useState<Omit<UserSettings, "id" | "user_id">>(defaultUserSettings);
   const [weightSheetOpen, setWeightSheetOpen] = useState(false);
   const [dayMenuOpen, setDayMenuOpen] = useState(false);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [categorySheetItem, setCategorySheetItem] = useState<DailyItemRow | null>(null);
   const [memoSheetItem, setMemoSheetItem] = useState<DailyItemRow | null>(null);
   const [memoText, setMemoText] = useState("");
+  const [mealSheetOpen, setMealSheetOpen] = useState(false);
+  const [mealTitle, setMealTitle] = useState("");
+  const [mealCalories, setMealCalories] = useState("");
+  const [mealSaveTemplate, setMealSaveTemplate] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSnapshot, setReportSnapshot] = useState<ReportSnapshot>(reportInitialSnapshot);
   const [reportLoading, setReportLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<DailyItemRow["time_bucket"] | "all">("all");
   const [addCategory, setAddCategory] = useState<AddCategory>("meal");
-  const [selectedQuickAddTitle, setSelectedQuickAddTitle] = useState<string | null>(null);
+  const [selectedCatalogItemId, setSelectedCatalogItemId] = useState<string | null>(null);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [customTitle, setCustomTitle] = useState("");
   const [customCategory, setCustomCategory] = useState<RoutineCategory>("meal");
   const [customTime, setCustomTime] = useState("all_day");
+  const [customCalories, setCustomCalories] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const daySelectorRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollYRef = useRef<number | null>(null);
 
   const routineItems = useMemo<RoutineItem[]>(
     () => dailyItems.map(mapDailyItemToRoutineItem),
@@ -170,15 +186,26 @@ export function RoutineShell() {
   const selectedDate = new Date(selectedDateParts[0], selectedDateParts[1] - 1, selectedDateParts[2]);
   const todayLabel = formatKoreanDate(selectedDate);
   const selectedDayDiff = dayDiffFromToday(selectedDateKey);
-  const isReadOnlyDate = selectedDayDiff > 0 || selectedDayDiff < -2;
+  const isReadOnlyDate = selectedDayDiff > 0 || selectedDayDiff < -settings.editable_past_days;
   const dayTypeLabel =
     dayTypeOptions.find((option) => option.value === routine?.day_type)?.label || "출근 + 헬스";
   const statusIcon = getRoutineStatusIcon(routine);
+  const calorieGoal = settings.daily_calorie_goal;
+  const successThreshold = settings.success_threshold_pct;
+  const headerTextColor = getAccessibleHeaderTextColor(settings.selected_theme_key);
+  const displayWeight = weightLog?.weight ?? fallbackWeightLog?.weight ?? null;
+  const targetWeight = settings.target_weight;
+  const canShiftDate = (offset: number) => {
+    const nextDateKey = shiftDateKey(selectedDateKey, offset);
+    return nextDateKey <= toDateKey(new Date()) && navigableDateKeys.has(nextDateKey);
+  };
 
   const checkedCalories = dailyItems
-    .filter((item) => item.status === "checked" && item.category === "meal")
-    .reduce((sum, item) => sum + (item.actual_calories || item.planned_calories || 0), 0);
-  const checkedMealItems = dailyItems.filter((item) => item.status === "checked" && item.category === "meal");
+    .filter((item) => item.status === "checked" && item.category === "meal" && getMealCalories(item) !== null)
+    .reduce((sum, item) => sum + (getMealCalories(item) || 0), 0);
+  const checkedMealItems = dailyItems.filter(
+    (item) => item.status === "checked" && item.category === "meal" && getMealCalories(item) !== null
+  );
   const caloriePct = Math.min(100, Math.round((checkedCalories / calorieGoal) * 100));
 
   const reportData = useMemo(() => {
@@ -232,7 +259,7 @@ export function RoutineShell() {
     let currentStreak = 0;
     for (let index = dateKeys.length - 1; index >= 0; index -= 1) {
       const row = routineByDate[dateKeys[index]];
-      if (row && row.completion_pct >= 80) currentStreak += 1;
+      if (row && row.completion_pct >= successThreshold) currentStreak += 1;
       else break;
     }
 
@@ -240,7 +267,7 @@ export function RoutineShell() {
     let runningStreak = 0;
     dateKeys.forEach((dateKey) => {
       const row = routineByDate[dateKey];
-      if (row && row.completion_pct >= 80) {
+      if (row && row.completion_pct >= successThreshold) {
         runningStreak += 1;
         bestStreak = Math.max(bestStreak, runningStreak);
       } else {
@@ -256,6 +283,12 @@ export function RoutineShell() {
         percent: row?.completion_pct || 0
       };
     });
+    const recordedRoutineDays = sortedRoutines.filter((row) => row.total_count > 0);
+    const weeklyAverageCompletion = recordedRoutineDays.length
+      ? Math.round(
+          recordedRoutineDays.reduce((sum, row) => sum + row.completion_pct, 0) / recordedRoutineDays.length
+        )
+      : 0;
 
     const itemsByRoutineDate = reportSnapshot.items.reduce<Record<string, DailyItemRow[]>>((acc, item) => {
       const dateKey = routineById[item.daily_routine_id]?.routine_date;
@@ -266,10 +299,15 @@ export function RoutineShell() {
 
     const calorieDays = dateKeys.map((dateKey) => {
       const sum = (itemsByRoutineDate[dateKey] || [])
-        .filter((item) => item.status === "checked" && item.category === "meal")
-        .reduce((total, item) => total + (item.actual_calories || item.planned_calories || 0), 0);
+        .filter((item) => item.status === "checked" && item.category === "meal" && getMealCalories(item) !== null)
+        .reduce((total, item) => total + (getMealCalories(item) || 0), 0);
       return { dateKey, kcal: sum };
     });
+    const calorieBars = calorieDays.map((day) => ({
+      ...day,
+      day: Number(day.dateKey.slice(-2)),
+      percent: calorieGoal ? Math.min(100, Math.round((day.kcal / calorieGoal) * 100)) : 0
+    }));
     const recordedCalorieDays = calorieDays.filter((day) => day.kcal > 0);
     const averageCalories = recordedCalorieDays.length
       ? Math.round(recordedCalorieDays.reduce((sum, day) => sum + day.kcal, 0) / recordedCalorieDays.length)
@@ -304,6 +342,43 @@ export function RoutineShell() {
     const averageWeight = sortedWeights.length
       ? sortedWeights.reduce((sum, weight) => sum + Number(weight.weight), 0) / sortedWeights.length
       : null;
+    const weightByDate = sortedWeights.reduce<Record<string, WeightLog>>((acc, weight) => {
+      acc[weight.measured_date] = weight;
+      return acc;
+    }, {});
+    const weightRange = minWeight !== null && maxWeight !== null ? Math.max(maxWeight - minWeight, 0.1) : 0.1;
+    const weightTrendBars = dateKeys.map((dateKey) => {
+      const weight = weightByDate[dateKey];
+      const value = weight ? Number(weight.weight) : null;
+      const percent = value !== null && minWeight !== null
+        ? Math.round(((value - minWeight) / weightRange) * 80) + 10
+        : 0;
+      return {
+        dateKey,
+        day: Number(dateKey.slice(-2)),
+        value,
+        percent
+      };
+    });
+    const targetWeightProgress = settings.start_weight && settings.target_weight && lastWeight
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            settings.goal_type === "gain"
+              ? Math.round(
+                  ((Number(lastWeight.weight) - Number(settings.start_weight)) /
+                    (Number(settings.target_weight) - Number(settings.start_weight) || 1)) *
+                    100
+                )
+              : Math.round(
+                  ((Number(settings.start_weight) - Number(lastWeight.weight)) /
+                    (Number(settings.start_weight) - Number(settings.target_weight) || 1)) *
+                    100
+                )
+          )
+        )
+      : null;
 
     const routineStats = reportSnapshot.items.reduce<Record<string, { title: string; checked: number; total: number }>>(
       (acc, item) => {
@@ -327,7 +402,7 @@ export function RoutineShell() {
     const exerciseStats = categoryStats.find((stat) => stat.id === "exercise");
     const mealStats = categoryStats.find((stat) => stat.id === "meal");
     const summary =
-      percent >= 80
+      percent >= successThreshold
         ? "오늘은 루틴 흐름이 안정적이에요. 남은 항목은 유지 리듬을 깨지 않는 선에서 가볍게 마무리하면 좋아요."
         : weakestTime
           ? `${weakestTime.label} 루틴이 오늘의 병목이에요. 가장 작은 항목 1개만 먼저 완료하면 달성률을 끌어올릴 수 있어요.`
@@ -360,12 +435,16 @@ export function RoutineShell() {
       summary,
       timeStats,
       underCalorieDays,
+      calorieBars,
+      targetWeightProgress,
       weeklyBars,
+      weeklyAverageCompletion,
       weeklyWeightDelta,
+      weightTrendBars,
       weightDelta,
       weakestTime
     };
-  }, [dailyItems, percent, reportSnapshot, selectedDateKey, weightLog]);
+  }, [calorieGoal, dailyItems, percent, reportSnapshot, selectedDateKey, settings, successThreshold, weightLog]);
 
   useEffect(() => {
     let ignore = false;
@@ -377,7 +456,37 @@ export function RoutineShell() {
   }, [selectedDateKey]);
 
   useEffect(() => {
-    const sheetOpen = addSheetOpen || Boolean(memoSheetItem) || reportOpen || weightSheetOpen;
+    if (loading || pendingScrollYRef.current === null) return;
+
+    const targetY = pendingScrollYRef.current;
+    pendingScrollYRef.current = null;
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: targetY, left: 0, behavior: "auto" });
+    });
+  }, [dailyItems, loading]);
+
+  useEffect(() => {
+    applyThemeToDocument(settings.selected_theme_key);
+  }, [settings.selected_theme_key]);
+
+  useEffect(() => {
+    if (!dayMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!daySelectorRef.current?.contains(event.target as Node)) {
+        setDayMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [dayMenuOpen]);
+
+  useEffect(() => {
+    const sheetOpen = addSheetOpen || Boolean(memoSheetItem) || mealSheetOpen || reportOpen || weightSheetOpen;
     if (!sheetOpen) return;
 
     const previousOverflow = document.body.style.overflow;
@@ -386,7 +495,7 @@ export function RoutineShell() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [addSheetOpen, memoSheetItem, reportOpen, weightSheetOpen]);
+  }, [addSheetOpen, mealSheetOpen, memoSheetItem, reportOpen, weightSheetOpen]);
 
   useEffect(() => {
     let ticking = false;
@@ -510,16 +619,44 @@ export function RoutineShell() {
       }
 
       setUserId(data.user.id);
-      const readOnlyDate = dayDiffFromToday(dateKey) > 0 || dayDiffFromToday(dateKey) < -2;
+      const nextSettings = await getOrCreateUserSettings(data.user.id);
+      const readOnlyDate =
+        dayDiffFromToday(dateKey) > 0 || dayDiffFromToday(dateKey) < -nextSettings.editable_past_days;
       const result = await getOrCreateRoutineForDate(data.user.id, dateKey, {
         createIfMissing: !readOnlyDate
       });
       const weight = await getWeightLog(data.user.id, dateKey);
+      const previousWeight = await getPreviousWeightLog(data.user.id, dateKey);
+      const nextCatalogItems = await ensureDefaultCatalogItems(data.user.id);
+      const { data: routineDates } = await supabase
+        .from("daily_routines")
+        .select("routine_date")
+        .eq("user_id", data.user.id)
+        .lte("routine_date", toDateKey(new Date()))
+        .returns<Array<Pick<DailyRoutine, "routine_date">>>();
 
       if (!ignore) {
         setRoutine(result.routine);
         setDailyItems(result.items);
         setWeightLog(weight);
+        setFallbackWeightLog(previousWeight);
+        setCatalogItems(nextCatalogItems);
+        setNavigableDateKeys(
+          new Set([
+            ...(routineDates || []).map((row) => row.routine_date),
+            ...(result.routine ? [result.routine.routine_date] : [])
+          ])
+        );
+        setSettings({
+          start_weight: nextSettings.start_weight,
+          target_weight: nextSettings.target_weight,
+          goal_type: nextSettings.goal_type,
+          daily_calorie_goal: nextSettings.daily_calorie_goal,
+          daily_protein_goal: nextSettings.daily_protein_goal,
+          success_threshold_pct: nextSettings.success_threshold_pct,
+          editable_past_days: nextSettings.editable_past_days,
+          selected_theme_key: nextSettings.selected_theme_key
+        });
       }
     } catch (err) {
       if (!ignore) {
@@ -569,7 +706,7 @@ export function RoutineShell() {
     } catch (err) {
       setRoutine(previousRoutine);
       setDailyItems(previousItems);
-      setError(err instanceof Error ? err.message : "체크 상태를 저장하지 못했어요.");
+      setError(err instanceof Error ? err.message : "상태를 저장하지 못했어요.");
     } finally {
       setBusyItemId(null);
     }
@@ -606,25 +743,29 @@ export function RoutineShell() {
   }
 
   function handleShiftSelectedDate(offset: number) {
+    if (!canShiftDate(offset)) return;
+    pendingScrollYRef.current = window.scrollY;
     setSelectedDateKey((current) => shiftDateKey(current, offset));
-    window.setTimeout(() => {
-      document.getElementById("today-routine-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
   }
 
   function closeAddSheet() {
     setAddSheetOpen(false);
     setCategorySheetItem(null);
-    setSelectedQuickAddTitle(null);
+    setSelectedCatalogItemId(null);
   }
 
   function openAddSheet(nextCategory: AddCategory = "meal", replaceItem: DailyItemRow | null = null) {
     setCategorySheetItem(replaceItem);
     setAddCategory(nextCategory);
     setCustomCategory(nextCategory === "custom" ? replaceItem?.category || "meal" : (nextCategory as RoutineCategory));
-    setSelectedQuickAddTitle(null);
+    setSelectedCatalogItemId(null);
     setCustomTitle(replaceItem?.title || "");
     setCustomTime(replaceItem?.time_minutes === null || !replaceItem ? "all_day" : String(replaceItem.time_minutes));
+    setCustomCalories(
+      replaceItem?.planned_calories || replaceItem?.actual_calories
+        ? String(replaceItem.actual_calories ?? replaceItem.planned_calories)
+        : ""
+    );
     setAddSheetOpen(true);
   }
 
@@ -673,6 +814,66 @@ export function RoutineShell() {
     window.alert("사진 첨부는 다음 단계에서 Supabase Storage와 연결할 예정이에요.");
   }
 
+  function openMealSheet() {
+    setMealTitle("");
+    setMealCalories("");
+    setMealSaveTemplate(false);
+    setMealSheetOpen(true);
+  }
+
+  async function handleSaveQuickMeal(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (!routine || !userId || isReadOnlyDate || !mealTitle.trim()) return;
+
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    const kcal = mealCalories.trim() ? Number(mealCalories) : null;
+    const mealItem = {
+      category: "meal" as RoutineCategory,
+      title: mealTitle.trim(),
+      subtitle: "빠른 식단 기록",
+      time_bucket: bucketFromMinutes(minutes),
+      time_minutes: minutes,
+      planned_calories: kcal
+    };
+
+    setError(null);
+    try {
+      const added = await addDailyItem(userId, routine.id, mealItem);
+      const createdItem = [...added.items]
+        .filter((item) => item.title === mealItem.title && item.category === "meal")
+        .sort((a, b) => b.sort_order - a.sort_order)[0];
+
+      if (createdItem) {
+        const checked = await updateDailyItemStatus(routine.id, createdItem.id, "checked");
+        setRoutine(checked.routine);
+        setDailyItems(checked.items);
+      } else {
+        setRoutine(added.routine);
+        setDailyItems(added.items);
+      }
+
+      if (mealSaveTemplate) {
+        const nextCatalogItems = await upsertCatalogItem(userId, {
+          category: "meal",
+          title: mealItem.title,
+          subtitle: "",
+          default_time_bucket: mealItem.time_bucket,
+          default_time_minutes: mealItem.time_minutes,
+          calories: kcal
+        });
+        setCatalogItems(nextCatalogItems);
+      }
+
+      setMealTitle("");
+      setMealCalories("");
+      setMealSaveTemplate(false);
+      setMealSheetOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "식단을 저장하지 못했어요.");
+    }
+  }
+
   async function handleDelete(item: DailyItemRow) {
     if (!routine || isReadOnlyDate) return;
     const confirmed = window.confirm(`"${item.title}" 항목을 오늘 루틴에서 삭제할까요?`);
@@ -694,19 +895,18 @@ export function RoutineShell() {
   async function handleConfirmAdd() {
     if (!routine || !userId || isReadOnlyDate) return;
 
-    const selectedItem = quickAddItems.find(
-      (item) => item.category === addCategory && item.title === selectedQuickAddTitle
-    );
+    const selectedItem = catalogItems.find((item) => item.id === selectedCatalogItemId);
 
     const customMinutes = customTime === "all_day" ? null : Number(customTime);
-    const nextItem = selectedItem || (customTitle.trim()
+    const customKcal = customCategory === "meal" && customCalories.trim() ? Number(customCalories) : null;
+    const nextItem = selectedItem ? mapCatalogToDailyItem(selectedItem) : (customTitle.trim()
       ? {
           category: customCategory,
           title: customTitle.trim(),
           subtitle: "직접 추가",
           time_bucket: bucketFromMinutes(customMinutes),
           time_minutes: customMinutes,
-          planned_calories: null
+          planned_calories: customKcal
         }
       : null);
 
@@ -725,6 +925,8 @@ export function RoutineShell() {
       }
       setCustomTitle("");
       setCustomTime("all_day");
+      setCustomCalories("");
+      setSelectedCatalogItemId(null);
       closeAddSheet();
     } catch (err) {
       setError(err instanceof Error ? err.message : categorySheetItem ? "항목을 변경하지 못했어요." : "항목을 추가하지 못했어요.");
@@ -739,19 +941,22 @@ export function RoutineShell() {
 
     setError(null);
     const customMinutes = customTime === "all_day" ? null : Number(customTime);
+    const customKcal = customCategory === "meal" && customCalories.trim() ? Number(customCalories) : null;
     try {
       const result = await addDailyItem(userId, routine.id, {
         category: customCategory,
         title: customTitle.trim(),
         subtitle: "직접 추가",
         time_bucket: bucketFromMinutes(customMinutes),
-        time_minutes: customMinutes
+        time_minutes: customMinutes,
+        planned_calories: customKcal
       });
       setRoutine(result.routine);
       setDailyItems(result.items);
       setCustomTitle("");
       setCustomTime("all_day");
-      setSelectedQuickAddTitle(null);
+      setCustomCalories("");
+      setSelectedCatalogItemId(null);
       setAddSheetOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "항목을 추가하지 못했어요.");
@@ -772,19 +977,30 @@ export function RoutineShell() {
   }
 
   return (
-    <main className="app-shell">
+    <main
+      className="app-shell"
+      style={{ "--header-text-color": headerTextColor } as CSSProperties}
+    >
       <button
         aria-label="이전 날짜"
         className="date-edge-zone left"
+        disabled={!canShiftDate(-1)}
         onClick={() => handleShiftSelectedDate(-1)}
         type="button"
       />
       <button
         aria-label="다음 날짜"
         className="date-edge-zone right"
+        disabled={!canShiftDate(1)}
         onClick={() => handleShiftSelectedDate(1)}
         type="button"
       />
+      <div className="app-top-bar app-top-bar-main">
+        <span />
+        <a className="header-settings-link" href="/settings">
+          설정
+        </a>
+      </div>
       <section className="glass-card dashboard-header">
         <div className="title-row">
           <div className="date-title-group">
@@ -795,7 +1011,17 @@ export function RoutineShell() {
             </div>
           </div>
           <div className="progress-block">
-            <div className="progress-ring" style={{ "--pct": percent } as CSSProperties}>
+            <div
+              className="progress-ring"
+              style={
+                {
+                  "--pct": percent,
+                  "--pct-start-angle": `${percent * 1.2}deg`,
+                  "--pct-mid-angle": `${percent * 2.4}deg`,
+                  "--pct-angle": `${percent * 3.6}deg`
+                } as CSSProperties
+              }
+            >
               <span>{percent}%</span>
             </div>
           </div>
@@ -808,12 +1034,12 @@ export function RoutineShell() {
             onClick={() => setWeightSheetOpen(true)}
             type="button"
           >
-            <span>{weightLog ? `${Number(weightLog.weight).toFixed(1)} kg` : "-- kg"}</span>
+            <span>{displayWeight ? `${Number(displayWeight).toFixed(1)} kg` : "-- kg"}</span>
             <span aria-hidden className="chip-icon">
               ›
             </span>
           </button>
-          <div className="day-selector">
+          <div className="day-selector" ref={daySelectorRef}>
             <button
               aria-expanded={dayMenuOpen}
               className="day-chip"
@@ -857,13 +1083,21 @@ export function RoutineShell() {
             {checkedMealItems.length > 0 ? (
               checkedMealItems.map((item) => (
                 <span key={item.id}>
-                  {item.actual_title || item.title} · {item.actual_calories || item.planned_calories || 0} kcal
+                  {item.actual_title || item.title} · {getMealCalories(item)} kcal
                 </span>
               ))
             ) : (
-              <span>아직 체크한 음식이 없어요</span>
+              <span>kcal가 있는 식단을 체크하면 반영돼요</span>
             )}
           </div>
+          <button
+            className="quick-meal-button"
+            disabled={isReadOnlyDate}
+            onClick={openMealSheet}
+            type="button"
+          >
+            먹은 것 기록 +
+          </button>
         </div>
       </section>
 
@@ -897,6 +1131,7 @@ export function RoutineShell() {
                 {sectionItems.map((row) => {
                   const item = routineItems.find((routineItem) => routineItem.id === row.id);
                   if (!item) return null;
+                  const mealCalories = row.category === "meal" ? getMealCalories(row) : null;
 
                   return (
                     <article className={`routine-row ${item.status}`} key={row.id}>
@@ -918,10 +1153,19 @@ export function RoutineShell() {
                               {categoryLabel[item.category]}
                             </button>
                           </span>
-                          {item.timeLabel ? <span className="time-label">{item.timeLabel}</span> : null}
+                          {item.timeLabel ? (
+                            <button
+                              className="time-label meta-edit-button"
+                              disabled={isReadOnlyDate}
+                              onClick={() => openAddSheet(row.category, row)}
+                              type="button"
+                            >
+                              {item.timeLabel}
+                            </button>
+                          ) : null}
                           {item.source === "standing" ? <span className="source-label">매일</span> : null}
-                          {row.planned_calories ? (
-                            <span className="source-label">{row.planned_calories} kcal</span>
+                          {mealCalories !== null ? (
+                            <span className="source-label calorie-badge">{mealCalories} kcal</span>
                           ) : null}
                         </div>
                         <h3>{item.title}</h3>
@@ -936,7 +1180,7 @@ export function RoutineShell() {
                           title="메모"
                           type="button"
                         >
-                          ✎
+                          <span className="note-icon" aria-hidden />
                         </button>
                         <button
                           aria-label="사진 첨부"
@@ -975,18 +1219,23 @@ export function RoutineShell() {
         </button>
       </section>
 
-      <StatusCalendar onSelectDate={handleSelectCalendarDate} selectedDateKey={selectedDateKey} />
+      <StatusCalendar
+        onSelectDate={handleSelectCalendarDate}
+        selectedDateKey={selectedDateKey}
+        successThreshold={successThreshold}
+      />
 
       <button aria-label="리포트" className="report-fab" onClick={() => setReportOpen(true)} type="button">
         <img alt="" aria-hidden src="/report_trophy.png" />
       </button>
 
       <WeightSheet
-        currentWeight={weightLog?.weight}
+        currentWeight={weightLog?.weight ?? fallbackWeightLog?.weight}
         dateLabel={todayLabel.dayLabel}
         onClose={() => setWeightSheetOpen(false)}
         onSave={handleSaveWeight}
         open={weightSheetOpen}
+        placeholderWeight={targetWeight}
       />
 
       {addSheetOpen ? (
@@ -1019,7 +1268,7 @@ export function RoutineShell() {
                     key={tab.id}
                     onClick={() => {
                       setAddCategory(tab.id as AddCategory);
-                      setSelectedQuickAddTitle(null);
+                      setSelectedCatalogItemId(null);
                       if (tab.id !== "custom") {
                         setCustomCategory(tab.id as RoutineCategory);
                       }
@@ -1032,7 +1281,7 @@ export function RoutineShell() {
               </div>
             </div>
             <div className="sheet-content">
-              {addCategory === "custom" ? (
+              {categorySheetItem || addCategory === "custom" ? (
                 <form
                   className="custom-add-form custom-add-form-full"
                   onSubmit={(event) => {
@@ -1067,22 +1316,35 @@ export function RoutineShell() {
                       </option>
                     ))}
                   </select>
+                  {customCategory === "meal" ? (
+                    <input
+                      inputMode="numeric"
+                      min={0}
+                      onChange={(event) => setCustomCalories(event.target.value)}
+                      placeholder="kcal 선택 입력"
+                      type="number"
+                      value={customCalories}
+                    />
+                  ) : null}
                 </form>
-              ) : (
+              ) : null}
+
+              {addCategory !== "custom" ? (
                 <div className="quick-add-list">
-                  {quickAddItems
+                  {categorySheetItem ? <p className="template-helper">템플릿으로 빠르게 교체</p> : null}
+                  {catalogItems
                     .filter((item) => item.category === addCategory)
                     .map((item) => {
                       const alreadySelected = dailyItems.some(
                         (row) => row.category === item.category && row.title === item.title
                       );
-                      const isActive = selectedQuickAddTitle === item.title;
+                      const isActive = selectedCatalogItemId === item.id;
 
                       return (
                         <button
                           className={`${alreadySelected ? "already-selected" : ""} ${isActive ? "active" : ""}`}
-                          key={`${item.category}-${item.title}`}
-                          onClick={() => setSelectedQuickAddTitle(item.title)}
+                          key={item.id}
+                          onClick={() => setSelectedCatalogItemId(item.id)}
                           type="button"
                         >
                           <span className={`category-badge ${item.category}`}>
@@ -1090,11 +1352,17 @@ export function RoutineShell() {
                           </span>
                           <strong>{item.title}</strong>
                           <small>{item.subtitle}</small>
+                          {item.category === "meal" && item.calories ? (
+                            <span className="quick-kcal">{item.calories} kcal</span>
+                          ) : null}
                         </button>
                       );
                     })}
+                  {catalogItems.filter((item) => item.category === addCategory).length === 0 ? (
+                    <p className="body-copy">설정에서 자주 쓰는 템플릿을 추가할 수 있어요.</p>
+                  ) : null}
                 </div>
-              )}
+              ) : null}
             </div>
             <div className="sheet-command-row">
               <button className="secondary-button" onClick={closeAddSheet} type="button">
@@ -1102,7 +1370,13 @@ export function RoutineShell() {
               </button>
               <button
                 className="primary-button"
-                disabled={addCategory === "custom" ? !customTitle.trim() : !selectedQuickAddTitle}
+                disabled={
+                  categorySheetItem
+                    ? !customTitle.trim() && !selectedCatalogItemId
+                    : addCategory === "custom"
+                      ? !customTitle.trim()
+                      : !selectedCatalogItemId
+                }
                 onClick={handleConfirmAdd}
                 type="button"
               >
@@ -1165,6 +1439,69 @@ export function RoutineShell() {
         </div>
       ) : null}
 
+      {mealSheetOpen ? (
+        <div
+          className="sheet-overlay"
+          onClick={() => setMealSheetOpen(false)}
+          role="presentation"
+        >
+          <form
+            className="bottom-sheet"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={handleSaveQuickMeal}
+            role="dialog"
+            aria-modal="true"
+            aria-label="식단 빠른 기록"
+          >
+            <div className="sheet-fixed-area">
+              <div className="sheet-handle" />
+              <p className="micro muted">오늘 먹은 것</p>
+              <h2 className="sheet-title">식단 빠른 기록</h2>
+            </div>
+            <div className="sheet-content">
+              <div className="quick-meal-form">
+                <label>
+                  <span>메뉴</span>
+                  <input
+                    autoFocus
+                    onChange={(event) => setMealTitle(event.target.value)}
+                    placeholder="예: 김치찌개 + 공기밥"
+                    value={mealTitle}
+                  />
+                </label>
+                <label>
+                  <span>kcal</span>
+                  <input
+                    inputMode="numeric"
+                    min={0}
+                    onChange={(event) => setMealCalories(event.target.value)}
+                    placeholder="선택 입력"
+                    type="number"
+                    value={mealCalories}
+                  />
+                </label>
+                <label className="inline-check-row">
+                  <input
+                    checked={mealSaveTemplate}
+                    onChange={(event) => setMealSaveTemplate(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>자주 쓰는 템플릿으로 저장</span>
+                </label>
+              </div>
+            </div>
+            <div className="sheet-command-row">
+              <button className="secondary-button" onClick={() => setMealSheetOpen(false)} type="button">
+                닫기
+              </button>
+              <button className="primary-button" disabled={!mealTitle.trim()} type="submit">
+                기록
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {reportOpen ? (
         <div className="sheet-overlay" onClick={() => setReportOpen(false)} role="presentation">
           <section
@@ -1206,7 +1543,7 @@ export function RoutineShell() {
               <section className="report-section">
                 <div className="report-section-head">
                   <h3>루틴 완료</h3>
-                  <span>{routine?.checked_count || 0}/{routine?.total_count || 0}</span>
+                  <span>7일 평균 {reportData.weeklyAverageCompletion}%</span>
                 </div>
                 <div className="report-stat-grid">
                   <div>
@@ -1221,6 +1558,16 @@ export function RoutineShell() {
                     <span>미완료</span>
                     <strong>{reportData.incompleteCount}</strong>
                   </div>
+                </div>
+                <div className="report-week-bars" aria-label="최근 7일 루틴 달성률">
+                  {reportData.weeklyBars.map((bar) => (
+                    <div key={bar.dateKey}>
+                      <i>
+                        <b style={{ height: `${Math.max(6, bar.percent)}%` }} />
+                      </i>
+                      <span>{bar.day}</span>
+                    </div>
+                  ))}
                 </div>
                 <div className="report-progress-list">
                   {reportData.categoryStats.map((stat) => (
@@ -1281,12 +1628,16 @@ export function RoutineShell() {
                         : "--"}
                     </strong>
                   </div>
+                  <div>
+                    <span>목표 진행</span>
+                    <strong>{reportData.targetWeightProgress === null ? "--" : `${reportData.targetWeightProgress}%`}</strong>
+                  </div>
                 </div>
-                <div className="report-week-bars" aria-label="최근 7일 루틴 달성률">
-                  {reportData.weeklyBars.map((bar) => (
+                <div className="report-weight-trend" aria-label="최근 7일 체중 추세">
+                  {reportData.weightTrendBars.map((bar) => (
                     <div key={bar.dateKey}>
                       <i>
-                        <b style={{ height: `${Math.max(6, bar.percent)}%` }} />
+                        {bar.value !== null ? <b style={{ bottom: `${bar.percent}%` }} /> : null}
                       </i>
                       <span>{bar.day}</span>
                     </div>
@@ -1312,6 +1663,16 @@ export function RoutineShell() {
                     <span>부족 일수</span>
                     <strong>{reportData.underCalorieDays}일</strong>
                   </div>
+                </div>
+                <div className="report-week-bars calorie-bars" aria-label="최근 7일 칼로리 추세">
+                  {reportData.calorieBars.map((bar) => (
+                    <div key={bar.dateKey}>
+                      <i>
+                        <b style={{ height: `${Math.max(6, bar.percent)}%` }} />
+                      </i>
+                      <span>{bar.day}</span>
+                    </div>
+                  ))}
                 </div>
               </section>
 

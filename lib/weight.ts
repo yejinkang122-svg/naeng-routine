@@ -14,6 +14,21 @@ export async function getWeightLog(userId: string, measuredDate: string) {
   return data;
 }
 
+export async function getPreviousWeightLog(userId: string, measuredDate: string) {
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("weight_logs")
+    .select("*")
+    .eq("user_id", userId)
+    .lt("measured_date", measuredDate)
+    .order("measured_date", { ascending: false })
+    .limit(1)
+    .maybeSingle<WeightLog>();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function upsertWeightLog(userId: string, measuredDate: string, weight: number) {
   const supabase = getSupabaseBrowserClient();
   const { data, error } = await supabase

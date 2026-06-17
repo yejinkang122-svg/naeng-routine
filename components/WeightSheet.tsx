@@ -8,9 +8,17 @@ type WeightSheetProps = {
   open: boolean;
   onClose: () => void;
   onSave: (weight: number) => Promise<void>;
+  placeholderWeight?: number | null;
 };
 
-export function WeightSheet({ currentWeight, dateLabel, open, onClose, onSave }: WeightSheetProps) {
+export function WeightSheet({
+  currentWeight,
+  dateLabel,
+  open,
+  onClose,
+  onSave,
+  placeholderWeight
+}: WeightSheetProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -60,7 +68,7 @@ export function WeightSheet({ currentWeight, dateLabel, open, onClose, onSave }:
             max="300"
             min="30"
             onChange={(event) => setValue(event.target.value)}
-            placeholder="56.0"
+            placeholder={placeholderWeight ? `${Number(placeholderWeight).toFixed(1)}` : "목표 체중"}
             step="0.1"
             type="number"
             value={value}
