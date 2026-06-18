@@ -109,6 +109,7 @@ export function SettingsPanel() {
 
     try {
       const saved = await updateUserSettings(userId, {
+        nickname: settings.nickname,
         start_weight: settings.start_weight,
         target_weight: settings.target_weight,
         daily_calorie_goal: settings.daily_calorie_goal,
@@ -289,6 +290,10 @@ export function SettingsPanel() {
             <span className="settings-label">과거 수정</span>
             <strong>최근 {settings.editable_past_days}일</strong>
           </div>
+          <div>
+            <span className="settings-label">닉네임</span>
+            <strong>{settings.nickname || "냉이"}</strong>
+          </div>
         </div>
       </section>
 
@@ -396,6 +401,19 @@ export function SettingsPanel() {
 
       <form className="glass-card page-card settings-form" onSubmit={handleSubmit}>
         <h2 className="section-title">숫자 기준</h2>
+        <label>
+          <span>닉네임</span>
+          <input
+            maxLength={10}
+            onChange={(event) =>
+              setSettings((current) => current && { ...current, nickname: event.target.value })
+            }
+            pattern="[0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ]{1,10}"
+            placeholder="예: 냉이"
+            required
+            value={settings.nickname ?? ""}
+          />
+        </label>
         <label>
           <span>시작 체중</span>
           <input

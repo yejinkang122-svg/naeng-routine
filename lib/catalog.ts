@@ -1,4 +1,4 @@
-import { quickAddItems } from "@/lib/routines";
+import { defaultCatalogSeedItems } from "@/lib/catalogSeed";
 import type { CatalogItem, DailyItemRow, RoutineCategory } from "@/lib/types";
 import { getSupabaseBrowserClient } from "./supabase";
 
@@ -44,7 +44,7 @@ export async function ensureDefaultCatalogItems(userId: string) {
 
   const supabase = getSupabaseBrowserClient();
   const { error } = await supabase.from("catalog_items").insert(
-    quickAddItems.map((item, index) => ({
+    defaultCatalogSeedItems.map((item, index) => ({
       user_id: userId,
       category: item.category,
       title: item.title,

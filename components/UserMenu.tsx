@@ -8,6 +8,9 @@ type UserMenuProps = {
 
 export function UserMenu({ email }: UserMenuProps) {
   async function handleSignOut() {
+    const confirmed = window.confirm("로그아웃할까요?");
+    if (!confirmed) return;
+
     const supabase = getSupabaseBrowserClient();
     await supabase.auth.signOut();
     window.location.reload();

@@ -2,6 +2,7 @@ import type { UserSettings } from "@/lib/types";
 import { getSupabaseBrowserClient } from "./supabase";
 
 export const defaultUserSettings: Omit<UserSettings, "id" | "user_id"> = {
+  nickname: "냉이",
   start_weight: null,
   target_weight: null,
   goal_type: "lose",

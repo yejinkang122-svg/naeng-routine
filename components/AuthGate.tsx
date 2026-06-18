@@ -23,8 +23,9 @@ async function ensureUserDefaults(user: User) {
   const supabase = getSupabaseBrowserClient();
   const displayName =
     user.user_metadata?.name ||
+    user.user_metadata?.nickname ||
     user.email?.split("@")[0] ||
-    "예진";
+    "냉이";
 
   await supabase.from("profiles").upsert(
     {
@@ -34,12 +35,23 @@ async function ensureUserDefaults(user: User) {
     { onConflict: "user_id" }
   );
 
-  await supabase.from("user_settings").upsert(
-    {
-      user_id: user.id
-    },
-    { onConflict: "user_id" }
-  );
+  const { data: settings } = await supabase
+    .from("user_settings")
+    .select("id,nickname")
+    .eq("user_id", user.id)
+    .maybeSingle<{ id: string; nickname: string | null }>();
+
+  if (!settings) {
+    await supabase.from("user_settings").insert({
+      user_id: user.id,
+      nickname: displayName
+    });
+  } else if (!settings.nickname) {
+    await supabase
+      .from("user_settings")
+      .update({ nickname: displayName })
+      .eq("user_id", user.id);
+  }
 }
 
 export function AuthGate({ children }: AuthGateProps) {

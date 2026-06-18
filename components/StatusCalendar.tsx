@@ -7,9 +7,8 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 const iconByState: Partial<Record<CalendarDayState, { src: string; alt: string }>> = {
   in_progress: { src: "/calendar_sword.png", alt: "진행중" },
-  success: { src: "/calendar_heart.png", alt: "성공" },
-  perfect: { src: "/calendar_heart.png", alt: "성공" },
-  failed: { src: "/calendar_bomb.png", alt: "실패" }
+  success: { src: "/calendar_heart.png", alt: "달성" },
+  perfect: { src: "/calendar_heart.png", alt: "달성" }
 };
 
 const weekLabels = ["일", "월", "화", "수", "목", "금", "토"];
@@ -29,10 +28,9 @@ function getMonthGrid(viewDate: Date) {
 
 function stateFromRoutine(routine: DailyRoutine | undefined, successThreshold: number): CalendarDayState {
   if (!routine) return "no_record";
-  if (routine.checked_count === 0 && routine.failed_count === 0 && routine.skipped_count === 0) return "planned";
+  if (routine.checked_count === 0) return "planned";
   if (routine.completion_pct >= 100) return "perfect";
   if (routine.completion_pct >= successThreshold) return "success";
-  if (routine.failed_count > 0 && routine.completion_pct < 50) return "failed";
   if (routine.total_count > 0) return "in_progress";
   return "planned";
 }

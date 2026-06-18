@@ -67,6 +67,7 @@ export type WeightLog = {
 export type UserSettings = {
   id: string;
   user_id: string;
+  nickname: string | null;
   start_weight: number | null;
   target_weight: number | null;
   goal_type: "lose" | "gain" | "maintain";

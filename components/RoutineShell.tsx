@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, FormEvent, TouchEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CatalogItem, DailyItemRow, DailyRoutine, RoutineCategory, RoutineItem, UserSettings } from "@/lib/types";
 import { formatKoreanDate } from "@/lib/date";
@@ -101,12 +101,8 @@ function getRoutineStatusIcon(routine: DailyRoutine | null) {
     return { alt: "진행중", src: "/calendar_sword_title.png" };
   }
 
-  if (routine.failed_count > 0) {
-    return { alt: "실패", src: "/calendar_bomb.png" };
-  }
-
   if (routine.completion_pct >= 80) {
-    return { alt: "성공", src: "/calendar_heart.png" };
+    return { alt: "달성", src: "/calendar_heart.png" };
   }
 
   return { alt: "진행중", src: "/calendar_sword_title.png" };
@@ -130,6 +126,13 @@ function formatWeightDelta(delta: number | null) {
   return `${delta > 0 ? "+" : ""}${delta.toFixed(1)}kg`;
 }
 
+function getTimeGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "좋은 아침";
+  if (hour >= 12 && hour < 18) return "좋은 오후";
+  return "좋은 밤";
+}
+
 export function RoutineShell() {
   const [selectedDateKey, setSelectedDateKey] = useState(() => toDateKey(new Date()));
   const [routine, setRoutine] = useState<DailyRoutine | null>(null);
@@ -150,6 +153,11 @@ export function RoutineShell() {
   const [mealCalories, setMealCalories] = useState("");
   const [mealSaveTemplate, setMealSaveTemplate] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [routineDockExpanded, setRoutineDockExpanded] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedDeleteIds, setSelectedDeleteIds] = useState<string[]>([]);
+  const [swipedItemId, setSwipedItemId] = useState<string | null>(null);
   const [reportSnapshot, setReportSnapshot] = useState<ReportSnapshot>(reportInitialSnapshot);
   const [reportLoading, setReportLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<DailyItemRow["time_bucket"] | "all">("all");
@@ -165,6 +173,8 @@ export function RoutineShell() {
   const [error, setError] = useState<string | null>(null);
   const daySelectorRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollYRef = useRef<number | null>(null);
+  const routineDockTouchStartYRef = useRef<number | null>(null);
+  const routineRowTouchStartXRef = useRef<number | null>(null);
 
   const routineItems = useMemo<RoutineItem[]>(
     () => dailyItems.map(mapDailyItemToRoutineItem),
@@ -190,6 +200,8 @@ export function RoutineShell() {
   const dayTypeLabel =
     dayTypeOptions.find((option) => option.value === routine?.day_type)?.label || "출근 + 헬스";
   const statusIcon = getRoutineStatusIcon(routine);
+  const greeting = `${getTimeGreeting()}, ${settings.nickname || "냉이"}!`;
+  const fullDateLabel = `${selectedDate.getFullYear()}년 ${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일`;
   const calorieGoal = settings.daily_calorie_goal;
   const successThreshold = settings.success_threshold_pct;
   const headerTextColor = getAccessibleHeaderTextColor(settings.selected_theme_key);
@@ -207,7 +219,6 @@ export function RoutineShell() {
     (item) => item.status === "checked" && item.category === "meal" && getMealCalories(item) !== null
   );
   const caloriePct = Math.min(100, Math.round((checkedCalories / calorieGoal) * 100));
-
   const reportData = useMemo(() => {
     const activeItems = dailyItems.filter((item) => item.status !== "skipped");
     const incompleteCount = activeItems.filter((item) => item.status !== "checked").length;
@@ -486,7 +497,14 @@ export function RoutineShell() {
   }, [dayMenuOpen]);
 
   useEffect(() => {
-    const sheetOpen = addSheetOpen || Boolean(memoSheetItem) || mealSheetOpen || reportOpen || weightSheetOpen;
+    const sheetOpen =
+      addSheetOpen ||
+      Boolean(memoSheetItem) ||
+      calendarOpen ||
+      mealSheetOpen ||
+      reportOpen ||
+      routineDockExpanded ||
+      weightSheetOpen;
     if (!sheetOpen) return;
 
     const previousOverflow = document.body.style.overflow;
@@ -495,7 +513,7 @@ export function RoutineShell() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [addSheetOpen, mealSheetOpen, memoSheetItem, reportOpen, weightSheetOpen]);
+  }, [addSheetOpen, calendarOpen, mealSheetOpen, memoSheetItem, reportOpen, routineDockExpanded, weightSheetOpen]);
 
   useEffect(() => {
     let ticking = false;
@@ -504,7 +522,7 @@ export function RoutineShell() {
       const anchors = timeTabs
         .map((tab) => {
           const sectionId = tab.id === "all" ? "all_day" : tab.id;
-          const element = document.getElementById(`routine-section-${sectionId}`);
+          const element = document.getElementById(`routine-dock-section-${sectionId}`);
           return element ? { id: tab.id, top: element.getBoundingClientRect().top } : null;
         })
         .filter(Boolean) as Array<{ id: DailyItemRow["time_bucket"] | "all"; top: number }>;
@@ -527,14 +545,17 @@ export function RoutineShell() {
     }
 
     updateActiveTabByScroll();
+    const dockScroller = document.querySelector(".routine-dock-scroll");
+    dockScroller?.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("resize", handleScroll);
 
     return () => {
+      dockScroller?.removeEventListener("scroll", handleScroll);
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleScroll);
     };
-  }, [dailyItems]);
+  }, [dailyItems, routineDockExpanded]);
 
   useEffect(() => {
     if (!reportOpen || !userId) return;
@@ -655,7 +676,8 @@ export function RoutineShell() {
           daily_protein_goal: nextSettings.daily_protein_goal,
           success_threshold_pct: nextSettings.success_threshold_pct,
           editable_past_days: nextSettings.editable_past_days,
-          selected_theme_key: nextSettings.selected_theme_key
+          selected_theme_key: nextSettings.selected_theme_key,
+          nickname: nextSettings.nickname
         });
       }
     } catch (err) {
@@ -685,14 +707,13 @@ export function RoutineShell() {
     );
     const activeItems = nextItems.filter((row) => row.status !== "skipped");
     const checkedCount = activeItems.filter((row) => row.status === "checked").length;
-    const failedCount = activeItems.filter((row) => row.status === "failed").length;
 
     setDailyItems(nextItems);
     setRoutine({
       ...routine,
       total_count: activeItems.length,
       checked_count: checkedCount,
-      failed_count: failedCount,
+      failed_count: 0,
       skipped_count: nextItems.filter((row) => row.status === "skipped").length,
       completion_pct: activeItems.length ? Math.round((checkedCount / activeItems.length) * 100) : 0
     });
@@ -731,15 +752,13 @@ export function RoutineShell() {
 
   function handleScrollTo(sectionId: DailyItemRow["time_bucket"] | "all") {
     setActiveTab(sectionId);
-    const targetId = sectionId === "all" ? "routine-section-all_day" : `routine-section-${sectionId}`;
+    const targetId = sectionId === "all" ? "routine-dock-section-all_day" : `routine-dock-section-${sectionId}`;
     document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function handleSelectCalendarDate(dateKey: string) {
     setSelectedDateKey(dateKey);
-    window.setTimeout(() => {
-      document.getElementById("today-routine-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
+    setCalendarOpen(false);
   }
 
   function handleShiftSelectedDate(offset: number) {
@@ -978,6 +997,175 @@ export function RoutineShell() {
     setWeightLog(saved);
   }
 
+  function handleRoutineDockTouchStart(event: TouchEvent<HTMLElement>) {
+    routineDockTouchStartYRef.current = event.touches[0]?.clientY ?? null;
+  }
+
+  function handleRoutineDockTouchEnd(event: TouchEvent<HTMLElement>) {
+    const startY = routineDockTouchStartYRef.current;
+    routineDockTouchStartYRef.current = null;
+    if (startY === null) return;
+
+    const endY = event.changedTouches[0]?.clientY ?? startY;
+    const deltaY = startY - endY;
+    if (deltaY > 48) {
+      setRoutineDockExpanded(true);
+      return;
+    }
+    if (deltaY < -48) {
+      setRoutineDockExpanded(false);
+      setDeleteMode(false);
+      setSelectedDeleteIds([]);
+      setSwipedItemId(null);
+    }
+  }
+
+  function toggleRoutineDockExpanded() {
+    setRoutineDockExpanded((expanded) => {
+      const nextExpanded = !expanded;
+      if (!nextExpanded) {
+        setDeleteMode(false);
+        setSelectedDeleteIds([]);
+        setSwipedItemId(null);
+      }
+      return nextExpanded;
+    });
+  }
+
+  function handleRoutineRowTouchStart(event: TouchEvent<HTMLElement>) {
+    routineRowTouchStartXRef.current = event.touches[0]?.clientX ?? null;
+  }
+
+  function handleRoutineRowTouchEnd(event: TouchEvent<HTMLElement>, itemId: string) {
+    const startX = routineRowTouchStartXRef.current;
+    routineRowTouchStartXRef.current = null;
+    if (startX === null || !routineDockExpanded || deleteMode) return;
+
+    const endX = event.changedTouches[0]?.clientX ?? startX;
+    const deltaX = startX - endX;
+    if (deltaX > 44) {
+      setSwipedItemId(itemId);
+      return;
+    }
+    if (deltaX < -32) {
+      setSwipedItemId((current) => (current === itemId ? null : current));
+    }
+  }
+
+  function toggleDeleteSelection(itemId: string) {
+    setSelectedDeleteIds((current) =>
+      current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId]
+    );
+  }
+
+  function handleToggleDeleteMode() {
+    setRoutineDockExpanded(true);
+    setSwipedItemId(null);
+    setDeleteMode((enabled) => {
+      if (enabled) {
+        setSelectedDeleteIds([]);
+      }
+      return !enabled;
+    });
+  }
+
+  async function handleConfirmDeleteSelected() {
+    if (!routine || isReadOnlyDate || selectedDeleteIds.length === 0) return;
+
+    setBusyItemId("delete-selected");
+    setError(null);
+    try {
+      let latestRoutine = routine;
+      let latestItems = dailyItems;
+      for (const itemId of selectedDeleteIds) {
+        const result = await softDeleteDailyItem(latestRoutine.id, itemId);
+        latestRoutine = result.routine;
+        latestItems = result.items;
+      }
+      setRoutine(latestRoutine);
+      setDailyItems(latestItems);
+      setSelectedDeleteIds([]);
+      setDeleteMode(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "선택한 항목을 삭제하지 못했어요.");
+    } finally {
+      setBusyItemId(null);
+    }
+  }
+
+  function renderRoutineDockRow(row: DailyItemRow) {
+    const item = routineItems.find((routineItem) => routineItem.id === row.id);
+    if (!item) return null;
+
+    const mealCalories = row.category === "meal" ? getMealCalories(row) : null;
+    const displayTimeLabel = item.timeLabel || "종일";
+    const deleteSelected = selectedDeleteIds.includes(row.id);
+    const actionsOpen = routineDockExpanded && !deleteMode && swipedItemId === row.id;
+
+    return (
+      <article
+        className={`routine-row dock-routine-row ${item.status} ${actionsOpen ? "actions-open" : ""}`}
+        key={row.id}
+        onTouchEnd={(event) => handleRoutineRowTouchEnd(event, row.id)}
+        onTouchStart={handleRoutineRowTouchStart}
+      >
+        <div className="dock-row-content">
+          {deleteMode ? (
+            <button
+              aria-label={`${item.title} 삭제 선택`}
+              className={`delete-select-dot ${deleteSelected ? "selected" : ""}`}
+              disabled={busyItemId === "delete-selected" || isReadOnlyDate}
+              onClick={() => toggleDeleteSelection(row.id)}
+              type="button"
+            />
+          ) : (
+            <button
+              aria-label={`${item.title} 체크`}
+              className={`check-dot ${item.status}`}
+              disabled={busyItemId === item.id || isReadOnlyDate}
+              onClick={() => handleToggle(item)}
+              type="button"
+            />
+          )}
+          <div className="routine-body">
+            <div className="routine-meta">
+              <span className={`category-badge ${item.category}`}>
+                <span>{categoryLabel[item.category]}</span>
+              </span>
+              {mealCalories !== null ? (
+                <span className="source-label calorie-badge">{mealCalories} kcal</span>
+              ) : null}
+              {item.source === "standing" ? <span className="source-label">매일</span> : null}
+            </div>
+            <h3>{item.title}</h3>
+            {item.subtitle ? <p>{item.subtitle}</p> : null}
+            {item.memo ? <p className="memo-line">메모: {item.memo}</p> : null}
+          </div>
+          <div className="dock-row-side">
+            <span className="routine-time-text">{displayTimeLabel}</span>
+          </div>
+        </div>
+        <div className="dock-swipe-actions" aria-label="항목 액션">
+          <button aria-label="사진 첨부" disabled={isReadOnlyDate} onClick={handlePhoto} title="사진 첨부" type="button">
+            <span className="camera-icon" aria-hidden />
+          </button>
+          <button aria-label="메모" disabled={isReadOnlyDate} onClick={() => handleMemo(row)} title="메모" type="button">
+            <span className="note-icon" aria-hidden />
+          </button>
+          <button
+            aria-label="수정"
+            disabled={isReadOnlyDate}
+            onClick={() => openAddSheet(row.category, row)}
+            title="수정"
+            type="button"
+          >
+            <span className="edit-icon" aria-hidden />
+          </button>
+        </div>
+      </article>
+    );
+  }
+
   return (
     <main
       className="app-shell"
@@ -998,17 +1186,30 @@ export function RoutineShell() {
         type="button"
       />
       <div className="app-top-bar app-top-bar-main">
-        <span />
-        <a className="header-settings-link" href="/settings">
-          설정
+        <button aria-label="캘린더" className="header-icon-button glass-icon-button" onClick={() => setCalendarOpen(true)} type="button">
+          <svg aria-hidden viewBox="0 0 22 22">
+            <rect x="3" y="4" width="16" height="15" rx="2" />
+            <line x1="3" y1="8" x2="19" y2="8" />
+            <line x1="7" y1="2" x2="7" y2="6" />
+            <line x1="15" y1="2" x2="15" y2="6" />
+            <circle cx="7" cy="12" r="0.8" />
+            <circle cx="11" cy="12" r="0.8" />
+            <circle cx="15" cy="12" r="0.8" />
+          </svg>
+        </button>
+        <a aria-label="설정" className="header-icon-button glass-icon-button" href="/settings">
+          <svg aria-hidden viewBox="0 0 22 22">
+            <circle cx="11" cy="11" r="3.5" />
+            <path d="M11 2v2M11 18v2M2 11h2M18 11h2M4.6 4.6l1.4 1.4M16 16l1.4 1.4M4.6 17.4l1.4-1.4M16 6l1.4-1.4" />
+          </svg>
         </a>
       </div>
-      <section className="glass-card dashboard-header">
+      <section className="dashboard-title-summary">
         <div className="title-row">
           <div className="date-title-group">
-            <p className="micro muted">{todayLabel.monthLabel}</p>
+            <p className="micro muted">{fullDateLabel}</p>
             <div className="date-line">
-              <h1>{todayLabel.dayLabel}</h1>
+              <h1>{greeting}</h1>
               <img alt={statusIcon.alt} className="profile-pixel status-pixel" src={statusIcon.src} />
             </div>
           </div>
@@ -1028,7 +1229,9 @@ export function RoutineShell() {
             </div>
           </div>
         </div>
+      </section>
 
+      <section className="glass-card dashboard-header">
         <div className="header-actions">
           <button
             className="weight-chip"
@@ -1092,19 +1295,29 @@ export function RoutineShell() {
               <span>kcal가 있는 식단을 체크하면 반영돼요</span>
             )}
           </div>
-          <button
-            className="quick-meal-button"
-            disabled={isReadOnlyDate}
-            onClick={openMealSheet}
-            type="button"
-          >
-            + 먹은 것 기록
-          </button>
         </div>
       </section>
 
-      <section className="glass-card page-card routine-card" id="today-routine-card">
-        <div className="time-tabs" aria-label="루틴 시간대 이동">
+      <section
+        aria-label="오늘 루틴"
+        className={`routine-dock ${routineDockExpanded ? "expanded" : "collapsed"}`}
+        id="today-routine-dock"
+        onTouchEnd={handleRoutineDockTouchEnd}
+        onTouchStart={handleRoutineDockTouchStart}
+      >
+        <button
+          aria-label={routineDockExpanded ? "투두리스트 접기" : "투두리스트 펼치기"}
+          aria-pressed={routineDockExpanded}
+          className="routine-dock-handle"
+          onClick={toggleRoutineDockExpanded}
+          type="button"
+        >
+          <svg aria-hidden viewBox="0 0 24 24">
+            <path d="M6 14l6-6 6 6" />
+          </svg>
+        </button>
+
+        <div className="time-tabs routine-dock-tabs" aria-label="루틴 시간대 이동">
           {timeTabs.map((tab) => (
             <button
               className={activeTab === tab.id ? "active" : ""}
@@ -1120,116 +1333,104 @@ export function RoutineShell() {
         {error ? <p className="inline-error">{error}</p> : null}
         {loading ? <p className="body-copy">루틴을 불러오는 중이에요.</p> : null}
 
-        <div className="routine-list">
-          {timeSections.map((section) => {
-            const sectionItems = groupedItems[section.id];
-            if (sectionItems.length === 0) return null;
+        <div className="routine-dock-scroll">
+          <div className="routine-list">
+            {timeSections.map((section) => {
+              const sectionItems = groupedItems[section.id];
+              if (sectionItems.length === 0) return null;
 
-            return (
-              <div className="routine-section" id={`routine-section-${section.id}`} key={section.id}>
-                {section.id !== "all_day" ? (
-                  <h3 className="routine-section-title">{section.label}</h3>
-                ) : null}
-                {sectionItems.map((row) => {
-                  const item = routineItems.find((routineItem) => routineItem.id === row.id);
-                  if (!item) return null;
-                  const mealCalories = row.category === "meal" ? getMealCalories(row) : null;
-
-                  return (
-                    <article className={`routine-row ${item.status}`} key={row.id}>
-                        <button
-                          aria-label={`${item.title} 체크`}
-                          className={`check-dot ${item.status}`}
-                          disabled={busyItemId === item.id || isReadOnlyDate}
-                        onClick={() => handleToggle(item)}
-                        type="button"
-                      />
-                      <div className="routine-body">
-                        <div className="routine-meta">
-                          <span className={`category-badge ${item.category}`}>
-                            <button
-                              disabled={isReadOnlyDate}
-                              onClick={() => openAddSheet(row.category, row)}
-                              type="button"
-                            >
-                              {categoryLabel[item.category]}
-                            </button>
-                          </span>
-                          {item.timeLabel ? (
-                            <button
-                              className="time-label meta-edit-button"
-                              disabled={isReadOnlyDate}
-                              onClick={() => openAddSheet(row.category, row)}
-                              type="button"
-                            >
-                              {item.timeLabel}
-                            </button>
-                          ) : null}
-                          {item.source === "standing" ? <span className="source-label">매일</span> : null}
-                          {mealCalories !== null ? (
-                            <span className="source-label calorie-badge">{mealCalories} kcal</span>
-                          ) : null}
-                        </div>
-                        <h3>{item.title}</h3>
-                        {item.subtitle ? <p>{item.subtitle}</p> : null}
-                        {item.memo ? <p className="memo-line">메모: {item.memo}</p> : null}
-                      </div>
-                      <div className="todo-actions" aria-label="항목 액션">
-                        <button
-                          aria-label="메모"
-                          disabled={isReadOnlyDate}
-                          onClick={() => handleMemo(row)}
-                          title="메모"
-                          type="button"
-                        >
-                          <span className="note-icon" aria-hidden />
-                        </button>
-                        <button
-                          aria-label="사진 첨부"
-                          disabled={isReadOnlyDate}
-                          onClick={handlePhoto}
-                          title="사진 첨부"
-                          type="button"
-                        >
-                          <span className="camera-icon" aria-hidden />
-                        </button>
-                        <button
-                          aria-label="삭제"
-                          disabled={isReadOnlyDate}
-                          onClick={() => handleDelete(row)}
-                          title="삭제"
-                          type="button"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            );
-          })}
+              return (
+                <div className="routine-section" id={`routine-dock-section-${section.id}`} key={section.id}>
+                  {section.id !== "all_day" ? (
+                    <h3 className="routine-section-title">{section.label}</h3>
+                  ) : null}
+                  {sectionItems.map((row) => renderRoutineDockRow(row))}
+                </div>
+              );
+            })}
+            {!loading && dailyItems.length === 0 ? (
+              <p className="body-copy">오늘 등록된 루틴이 없어요.</p>
+            ) : null}
+          </div>
         </div>
 
-        <button
-          className="add-item-button"
-          disabled={isReadOnlyDate}
-          onClick={() => openAddSheet("meal")}
-          type="button"
-        >
-          + 항목 추가
-        </button>
+        <div className="routine-dock-toolbar" aria-label="루틴 액션">
+          <button
+            aria-label="항목 추가"
+            className="dock-tool-button active"
+            disabled={isReadOnlyDate}
+            onClick={() => openAddSheet("meal")}
+            type="button"
+          >
+            <svg aria-hidden viewBox="0 0 22 22">
+              <line x1="11" y1="4" x2="11" y2="18" />
+              <line x1="4" y1="11" x2="18" y2="11" />
+            </svg>
+          </button>
+          <button aria-label="리포트" className="dock-tool-button" onClick={() => setReportOpen(true)} type="button">
+            <svg aria-hidden viewBox="0 0 22 22">
+              <rect x="3" y="13" width="4" height="6" />
+              <rect x="9" y="9" width="4" height="10" />
+              <rect x="15" y="5" width="4" height="14" />
+            </svg>
+          </button>
+          <button
+            aria-label="삭제 모드"
+            className={`dock-tool-button ${deleteMode ? "active" : ""}`}
+            disabled={isReadOnlyDate}
+            onClick={handleToggleDeleteMode}
+            type="button"
+          >
+            <svg aria-hidden viewBox="0 0 22 22">
+              <path d="M5 6h12" />
+              <path d="M9 6V4h4v2" />
+              <path d="M7 8l1 10h6l1-10" />
+            </svg>
+          </button>
+        </div>
+        {deleteMode && selectedDeleteIds.length > 0 ? (
+          <div className="delete-confirm-alert" role="alertdialog" aria-label="투두 삭제 확인">
+            <p>{selectedDeleteIds.length}개 투두를 삭제할까요?</p>
+            <div>
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setSelectedDeleteIds([]);
+                  setDeleteMode(false);
+                }}
+                type="button"
+              >
+                아니오
+              </button>
+              <button className="primary-button" onClick={handleConfirmDeleteSelected} type="button">
+                네
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
-      <StatusCalendar
-        onSelectDate={handleSelectCalendarDate}
-        selectedDateKey={selectedDateKey}
-        successThreshold={successThreshold}
-      />
-
-      <button aria-label="리포트" className="report-fab" onClick={() => setReportOpen(true)} type="button">
-        <img alt="" aria-hidden src="/report_trophy.png" />
-      </button>
+      {calendarOpen ? (
+        <section className="calendar-screen" aria-label="캘린더 화면">
+          <div className="calendar-screen-top">
+            <button
+              aria-label="캘린더 닫기"
+              className="header-icon-button glass-icon-button"
+              onClick={() => setCalendarOpen(false)}
+              type="button"
+            >
+              <svg aria-hidden viewBox="0 0 22 22">
+                <path d="M14 5l-6 6 6 6" />
+              </svg>
+            </button>
+          </div>
+          <StatusCalendar
+            onSelectDate={handleSelectCalendarDate}
+            selectedDateKey={selectedDateKey}
+            successThreshold={successThreshold}
+          />
+        </section>
+      ) : null}
 
       <WeightSheet
         currentWeight={weightLog?.weight ?? fallbackWeightLog?.weight}
